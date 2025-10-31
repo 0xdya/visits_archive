@@ -1,0 +1,35 @@
+name: Update Visits Archive
+
+on:
+  schedule:
+    - cron: '0 12 * * *'  # كل يوم 12:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update-visits:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Get visit count
+        id: get_visits
+        run: |
+          VISITS=$(curl -s https://oxdyaa-default-rtdb.firebaseio.com/visits.json)
+          echo "visits=$VISITS" >> $GITHUB_OUTPUT
+
+      - name: Update archive.txt
+        run: |
+          DATE=$(date +'%Y-%m-%d')
+          echo "$DATE - ${{ steps.get_visits.outputs.visits }}" >> archive.txt
+
+      - name: Commit changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add archive.txt
+          git commit -m "Update visits for $(date +'%Y-%m-%d')" || echo "No changes to commit"
+          git push origin main
+          
