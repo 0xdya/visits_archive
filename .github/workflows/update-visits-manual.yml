@@ -1,0 +1,96 @@
+name: Manual Update Visits and Readme
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+
+jobs:
+  manual-update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Show git status (before)
+        run: |
+          git --version
+          pwd
+          ls -la
+          git status --porcelain || true
+
+      - name: Get visit count (HTTP + body)
+        id: get_visits
+        run: |
+          echo "Fetching from Firebase..."
+          HTTP_RESPONSE=$(curl -s -w "\n%{http_code}" https://oxdyaa-default-rtdb.firebaseio.com/visits.json)
+          BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
+          CODE=$(echo "$HTTP_RESPONSE" | tail -n1)
+          echo "http_code=$CODE" >> $GITHUB_OUTPUT
+          # trim quotes if Firebase returns "123" (string)
+          CLEAN=$(echo "$BODY" | sed 's/^"\(.*\)"$/\1/')
+          echo "body=$BODY" >> $GITHUB_OUTPUT
+          echo "visits=$CLEAN" >> $GITHUB_OUTPUT
+          echo "Fetched http_code=$CODE"
+          echo "Fetched body: $BODY"
+
+      - name: Debug: show outputs
+        run: |
+          echo "steps.get_visits.outputs.http_code = ${{ steps.get_visits.outputs.http_code }}"
+          echo "steps.get_visits.outputs.body = ${{ steps.get_visits.outputs.body }}"
+          echo "steps.get_visits.outputs.visits = ${{ steps.get_visits.outputs.visits }}"
+
+      - name: Update archive.txt
+        run: |
+          DATE=$(date +'%Y-%m-%d')
+          VISITS=${{ steps.get_visits.outputs.visits }}
+          echo "Adding to archive.txt: $DATE - $VISITS"
+          echo "$DATE - $VISITS" >> archive.txt
+          echo "archive.txt now:"
+          tail -n 10 archive.txt || true
+
+      - name: Commit archive.txt (separate commit)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add archive.txt
+          git commit -m "Update archive for $(date +'%Y-%m-%d')" || echo "No changes to commit"
+          git show --name-only --pretty="" HEAD || true
+          git push origin main
+
+      - name: Update README.md (only summary)
+        run: |
+          VISITS=${{ steps.get_visits.outputs.visits }}
+          DATE=$(date +'%Y-%m-%d')
+          LINE="Total visits today: $VISITS (as of $DATE)"
+          if [ -f README.md ]; then
+            if grep -q "^Total visits today:" README.md; then
+              sed -i "s/^Total visits today:.*/$LINE/" README.md
+            else
+              echo "" >> README.md
+              echo "$LINE" >> README.md
+            fi
+          else
+            echo "$LINE" > README.md
+          fi
+          echo "README.md preview:"
+          grep -n "Total visits today" README.md || true
+
+      - name: Commit README.md (separate commit)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Update README visits for $(date +'%Y-%m-%d')" || echo "No changes to commit"
+          git show --name-only --pretty="" HEAD || true
+          git push origin main
+
+      - name: Show git status (after)
+        run: |
+          git status --porcelain || true
+          git log -n 5 --oneline
+          
