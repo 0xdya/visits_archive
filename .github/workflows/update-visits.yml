@@ -1,8 +1,8 @@
-name: Update Visits Archive
+name: Update Visits and Readme
 
 on:
   schedule:
-    - cron: '0 12 * * *'  # كل يوم 12:00 UTC
+    - cron: '0 12 * * *'  # كل يوم 12:00 ظهرا بتوقيت UTC
   workflow_dispatch:
 
 jobs:
@@ -25,11 +25,30 @@ jobs:
           DATE=$(date +'%Y-%m-%d')
           echo "$DATE - ${{ steps.get_visits.outputs.visits }}" >> archive.txt
 
-      - name: Commit changes
+      - name: Commit archive.txt
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add archive.txt
-          git commit -m "Update visits for $(date +'%Y-%m-%d')" || echo "No changes to commit"
+          git commit -m "Update archive for $(date +'%Y-%m-%d')" || echo "No changes to commit"
           git push origin main
-          
+
+      - name: Update README.md
+        run: |
+          VISITS=${{ steps.get_visits.outputs.visits }}
+          DATE=$(date +'%Y-%m-%d')
+          # استبدال أو إنشاء سطر يحتوي على عدد الزيارات
+          if grep -q "Total visits today:" README.md; then
+            sed -i "s/Total visits today:.*/Total visits today: $VISITS (as of $DATE)/" README.md
+          else
+            echo "" >> README.md
+            echo "Total visits today: $VISITS (as of $DATE)" >> README.md
+          fi
+
+      - name: Commit README.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "Update README visits for $(date +'%Y-%m-%d')" || echo "No changes to commit"
+          git push origin main
