@@ -2,14 +2,14 @@ name: daily visits archiver
 
 on:
   schedule:
-    - cron: '0 12 * * *'  
+    - cron: '0 * * * *'  
   workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  REPO: ${{ github.repository }}       
+  REPO: ${{ github.repository }}
   TARGET_BRANCH: main
   GIT_NAME: "0xdya"
   GIT_EMAIL: "0xdya@proton.me"
@@ -25,26 +25,34 @@ jobs:
         with:
           ref: ${{ env.TARGET_BRANCH }}
 
-      - name: Determine commit count based on weekday
+      - name: Determine commit count based on weekday and random hour execution
         id: decide
         run: |
-          DOW=$(date -u +%u)  
+          DOW=$(date -u +%u)
           echo "weekday=$DOW" >> $GITHUB_OUTPUT
 
+          # 20% chance to execute each hour
+          EXEC=$((RANDOM % 100))
+          if [ "$EXEC" -gt 20 ]; then
+            echo "Skipping this hour due to probability filter (EXEC=$EXEC)"
+            echo "count=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           if [ "$DOW" -ge 1 ] && [ "$DOW" -le 4 ]; then
-            MIN=2; MAX=6       
+            MIN=2; MAX=6
           elif [ "$DOW" -eq 5 ] || [ "$DOW" -eq 6 ]; then
-            MIN=10; MAX=16     
+            MIN=10; MAX=16
           else
-            MIN=2; MAX=6    
+            MIN=2; MAX=6
           fi
 
           RAND_COUNT=$(( (RANDOM % (MAX - MIN + 1)) + MIN ))
 
           if [ "$DOW" -eq 2 ]; then
             SPIKE_CHANCE=$((RANDOM % 100))
-            if [ "$SPIKE_CHANCE" -lt 30 ]; then   
-              MULT=$(( (RANDOM % 6) + 15 ))    
+            if [ "$SPIKE_CHANCE" -lt 30 ]; then
+              MULT=$(( (RANDOM % 6) + 15 ))
               RAND_COUNT=$(( (RAND_COUNT * MULT) / 10 ))
               echo "spike=true" >> $GITHUB_OUTPUT
             else
@@ -62,6 +70,7 @@ jobs:
           echo "Computed commit count: $RAND_COUNT (DOW=$DOW, MIN=$MIN, MAX=$MAX)"
 
       - name: Make commits (variable number)
+        if: steps.decide.outputs.count != '0'
         env:
           GIT_AUTHOR_NAME: ${{ env.GIT_NAME }}
           GIT_AUTHOR_EMAIL: ${{ env.GIT_EMAIL }}
@@ -77,10 +86,8 @@ jobs:
           for i in $(seq 1 $COUNT); do
             VISITS_RAW=$(curl -s "$FIREBASE_URL" || echo "0")
             VISITS=$(echo "$VISITS_RAW" | tr -d '"')
-
             DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
-            # تحديث archive و README
             echo "$DATE - $VISITS" >> archive.txt
 
             if grep -q "^Total visits today:" README.md; then
