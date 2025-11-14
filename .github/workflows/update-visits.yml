@@ -28,24 +28,28 @@ jobs:
       - name: Determine commit count based on weekday
         id: decide
         run: |
-          DOW=$(date -u +%u)
+          DOW=$(date -u +%u)  
           echo "weekday=$DOW" >> $GITHUB_OUTPUT
 
           if [ "$DOW" -ge 1 ] && [ "$DOW" -le 4 ]; then
-            MIN=2; MAX=6
-          elif [ "$DOW" -eq 5 ]; then
-            MIN=1; MAX=5
+            MIN=2; MAX=6       
+          elif [ "$DOW" -eq 5 ] || [ "$DOW" -eq 6 ]; then
+            MIN=12; MAX=16     
           else
-            MIN=6; MAX=14
+            MIN=2; MAX=6    
           fi
 
           RAND_COUNT=$(( (RANDOM % (MAX - MIN + 1)) + MIN ))
 
-          SPIKE_CHANCE=$((RANDOM % 100))
-          if [ "$SPIKE_CHANCE" -lt 10 ]; then
-            MULT=$(( (RANDOM % 6) + 15 ))   # 15..20 => 1.5..2.0 عند قسمة على 10
-            RAND_COUNT=$(( (RAND_COUNT * MULT) / 10 ))
-            echo "spike=true" >> $GITHUB_OUTPUT
+          if [ "$DOW" -eq 2 ]; then
+            SPIKE_CHANCE=$((RANDOM % 100))
+            if [ "$SPIKE_CHANCE" -lt 30 ]; then   
+              MULT=$(( (RANDOM % 6) + 15 ))    
+              RAND_COUNT=$(( (RAND_COUNT * MULT) / 10 ))
+              echo "spike=true" >> $GITHUB_OUTPUT
+            else
+              echo "spike=false" >> $GITHUB_OUTPUT
+            fi
           else
             echo "spike=false" >> $GITHUB_OUTPUT
           fi
