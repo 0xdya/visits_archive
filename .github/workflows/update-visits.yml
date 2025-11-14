@@ -34,7 +34,7 @@ jobs:
           if [ "$DOW" -ge 1 ] && [ "$DOW" -le 4 ]; then
             MIN=2; MAX=6       
           elif [ "$DOW" -eq 5 ] || [ "$DOW" -eq 6 ]; then
-            MIN=12; MAX=16     
+            MIN=10; MAX=16     
           else
             MIN=2; MAX=6    
           fi
