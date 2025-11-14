@@ -1,4 +1,4 @@
-name: Smart variable daily commits
+name: daily visits archiver
 
 on:
   schedule:
