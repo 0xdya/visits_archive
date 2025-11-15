@@ -2,7 +2,8 @@ name: daily visits archiver
 
 on:
   schedule:
-    - cron: '0 * * * *'  
+    - cron: "0 12 * * *"   # تحديد عدد الكوميتات مرة واحدة يومياً
+    - cron: "0 * * * *"    # تنفيذ الكوميتات كل ساعة
   workflow_dispatch:
 
 permissions:
@@ -14,30 +15,23 @@ env:
   GIT_NAME: "0xdya"
   GIT_EMAIL: "0xdya@proton.me"
   FIREBASE_URL: "https://oxdyaa-default-rtdb.firebaseio.com/visits.json"
-  ALWAYS_COMMIT: "true"
 
 jobs:
-  smart-commits:
+
+  daily-generate:
+    if: github.event.schedule == '0 12 * * *'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_BRANCH }}
 
-      - name: Determine commit count based on weekday and random hour execution
-        id: decide
+      - name: Prepare cache folder
+        run: mkdir -p cache
+
+      - name: Generate commit count for today
         run: |
           DOW=$(date -u +%u)
-          echo "weekday=$DOW" >> $GITHUB_OUTPUT
-
-          # 20% chance to execute each hour
-          EXEC=$((RANDOM % 100))
-          if [ "$EXEC" -gt 20 ]; then
-            echo "Skipping this hour due to probability filter (EXEC=$EXEC)"
-            echo "count=0" >> $GITHUB_OUTPUT
-            exit 0
-          fi
 
           if [ "$DOW" -ge 1 ] && [ "$DOW" -le 4 ]; then
             MIN=2; MAX=6
@@ -47,70 +41,68 @@ jobs:
             MIN=2; MAX=6
           fi
 
-          RAND_COUNT=$(( (RANDOM % (MAX - MIN + 1)) + MIN ))
+          COUNT=$(( (RANDOM % (MAX - MIN + 1)) + MIN ))
 
-          if [ "$DOW" -eq 2 ]; then
-            SPIKE_CHANCE=$((RANDOM % 100))
-            if [ "$SPIKE_CHANCE" -lt 30 ]; then
-              MULT=$(( (RANDOM % 6) + 15 ))
-              RAND_COUNT=$(( (RAND_COUNT * MULT) / 10 ))
-              echo "spike=true" >> $GITHUB_OUTPUT
-            else
-              echo "spike=false" >> $GITHUB_OUTPUT
-            fi
+          echo $COUNT > cache/commit_count.txt
+          echo 0 > cache/commit_done.txt
+
+          git config user.name "${{ env.GIT_NAME }}"
+          git config user.email "${{ env.GIT_EMAIL }}"
+          git add cache/commit_count.txt cache/commit_done.txt
+          git commit -m "Generated daily commit count: $COUNT"
+          git push
+
+  hourly-run:
+    if: github.event.schedule == '0 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+
+      - name: Ensure cache exists
+        run: mkdir -p cache
+
+      - name: Read daily target and progress
+        id: read
+        run: |
+          TARGET=$(cat cache/commit_count.txt)
+          DONE=$(cat cache/commit_done.txt)
+
+          REMAIN=$((TARGET - DONE))
+
+          if [ "$REMAIN" -le 0 ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
           else
-            echo "spike=false" >> $GITHUB_OUTPUT
+            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "remain=$REMAIN" >> $GITHUB_OUTPUT
+            echo "done=$DONE" >> $GITHUB_OUTPUT
+            echo "target=$TARGET" >> $GITHUB_OUTPUT
           fi
 
-          if [ "$RAND_COUNT" -lt 1 ]; then
-            RAND_COUNT=1
-          fi
+      - name: Skip if finished
+        if: steps.read.outputs.skip == 'true'
+        run: echo "All commits for today are done"
 
-          echo "count=$RAND_COUNT" >> $GITHUB_OUTPUT
-          echo "Computed commit count: $RAND_COUNT (DOW=$DOW, MIN=$MIN, MAX=$MAX)"
-
-      - name: Make commits (variable number)
-        if: steps.decide.outputs.count != '0'
-        env:
-          GIT_AUTHOR_NAME: ${{ env.GIT_NAME }}
-          GIT_AUTHOR_EMAIL: ${{ env.GIT_EMAIL }}
-          GIT_COMMITTER_NAME: ${{ env.GIT_NAME }}
-          GIT_COMMITTER_EMAIL: ${{ env.GIT_EMAIL }}
-          FIREBASE_URL: ${{ env.FIREBASE_URL }}
-          ALWAYS_COMMIT: ${{ env.ALWAYS_COMMIT }}
+      - name: Make one commit
+        if: steps.read.outputs.skip == 'false'
         run: |
-          git config user.name "$GIT_AUTHOR_NAME"
-          git config user.email "$GIT_AUTHOR_EMAIL"
+          git config user.name "${{ env.GIT_NAME }}"
+          git config user.email "${{ env.GIT_EMAIL }}"
 
-          COUNT=${{ steps.decide.outputs.count }}
-          for i in $(seq 1 $COUNT); do
-            VISITS_RAW=$(curl -s "$FIREBASE_URL" || echo "0")
-            VISITS=$(echo "$VISITS_RAW" | tr -d '"')
-            DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          VISITS=$(curl -s "${{ env.FIREBASE_URL }}" | tr -d '"')
+          DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
 
-            echo "$DATE - $VISITS" >> archive.txt
+          echo "$DATE - $VISITS" >> archive.txt
+          git add archive.txt
 
-            if grep -q "^Total visits today:" README.md; then
-              sed -i "s/^Total visits today:.*/Total visits today: $VISITS (as of $DATE)/" README.md || true
-            else
-              echo "" >> README.md
-              echo "Total visits today: $VISITS (as of $DATE)" >> README.md
-            fi
+          git commit -m "Auto commit ($((steps.read.outputs.done + 1))/${{ steps.read.outputs.target }}): visits=$VISITS at $DATE"
 
-            git add archive.txt README.md || true
+          NEW_DONE=$((steps.read.outputs.done + 1))
+          echo $NEW_DONE > cache/commit_done.txt
+          git add cache/commit_done.txt
 
-            if [ "$ALWAYS_COMMIT" = "true" ]; then
-              git commit --allow-empty -m "Auto update ($i/$COUNT): visits=$VISITS at $DATE" || true
-            else
-              git commit -m "Auto update ($i/$COUNT): visits=$VISITS at $DATE" || echo "No changes to commit"
-            fi
+          git commit -m "Progress update ($NEW_DONE/${{ steps.read.outputs.target }})" || true
 
-            SLEEP_SEC=$((RANDOM % 21 + 5))
-            sleep $SLEEP_SEC
-          done
-
-      - name: Push commits
-        env:
-          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
-        run: |
-          git push https://x-access-token:${PERSONAL_TOKEN}@github.com/${{ env.REPO }}.git ${{ env.TARGET_BRANCH }}
+          git push
+y
