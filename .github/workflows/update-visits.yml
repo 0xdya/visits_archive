@@ -1,94 +1,83 @@
-name: daily visits archiver
+name: daily commits
 
 on:
   schedule:
-    - cron: "0 12 * * *"   # تحديد عدد الكوميتات مرة واحدة يومياً
-    - cron: "0 * * * *"    # تنفيذ الكوميتات كل ساعة
+    - cron: "0 * * * *"    # تشغيل كل ساعة
   workflow_dispatch:
 
 permissions:
   contents: write
 
 env:
-  REPO: ${{ github.repository }}
   TARGET_BRANCH: main
   GIT_NAME: "0xdya"
   GIT_EMAIL: "0xdya@proton.me"
   FIREBASE_URL: "https://oxdyaa-default-rtdb.firebaseio.com/visits.json"
 
 jobs:
-
-  daily-generate:
-    if: github.event.schedule == '0 12 * * *'
+  run:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_BRANCH }}
 
       - name: Prepare cache folder
-        run: mkdir -p cache
-
-      - name: Generate commit count for today
         run: |
-          DOW=$(date -u +%u)
+          mkdir -p cache
 
-          if [ "$DOW" -ge 1 ] && [ "$DOW" -le 4 ]; then
-            MIN=2; MAX=6
-          elif [ "$DOW" -eq 5 ] || [ "$DOW" -eq 6 ]; then
-            MIN=10; MAX=16
-          else
-            MIN=2; MAX=6
+      - name: Initialize daily values if needed
+        id: init
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+
+          # إذا الملف غير موجود—يوم جديد
+          if [ ! -f cache/day.txt ] || [ "$(cat cache/day.txt)" != "$TODAY" ]; then
+            DOW=$(date -u +%u)
+
+            if [ "$DOW" -ge 1 ] && [ "$DOW" -le 4 ]; then
+              MIN=2; MAX=6
+            elif [ "$DOW" -eq 5 ] || [ "$DOW" -eq 6 ]; then
+              MIN=10; MAX=16
+            else
+              MIN=2; MAX=6
+            fi
+
+            COUNT=$(( (RANDOM % (MAX - MIN + 1)) + MIN ))
+
+            echo "$TODAY" > cache/day.txt
+            echo "$COUNT" > cache/commit_count.txt
+            echo "0" > cache/commit_done.txt
           fi
 
-          COUNT=$(( (RANDOM % (MAX - MIN + 1)) + MIN ))
-
-          echo $COUNT > cache/commit_count.txt
-          echo 0 > cache/commit_done.txt
-
-          git config user.name "${{ env.GIT_NAME }}"
-          git config user.email "${{ env.GIT_EMAIL }}"
-          git add cache/commit_count.txt cache/commit_done.txt
-          git commit -m "Generated daily commit count: $COUNT"
-          git push
-
-  hourly-run:
-    if: github.event.schedule == '0 * * * *'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ env.TARGET_BRANCH }}
-
-      - name: Ensure cache exists
-        run: mkdir -p cache
-
-      - name: Read daily target and progress
+      - name: Read progress
         id: read
         run: |
           TARGET=$(cat cache/commit_count.txt)
           DONE=$(cat cache/commit_done.txt)
-
           REMAIN=$((TARGET - DONE))
 
-          if [ "$REMAIN" -le 0 ]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-            echo "remain=$REMAIN" >> $GITHUB_OUTPUT
-            echo "done=$DONE" >> $GITHUB_OUTPUT
-            echo "target=$TARGET" >> $GITHUB_OUTPUT
-          fi
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "done=$DONE" >> $GITHUB_OUTPUT
+          echo "remain=$REMAIN" >> $GITHUB_OUTPUT
 
       - name: Skip if finished
-        if: steps.read.outputs.skip == 'true'
-        run: echo "All commits for today are done"
+        if: steps.read.outputs.remain <= 0
+        run: echo "All commits done for today."
 
       - name: Make one commit
-        if: steps.read.outputs.skip == 'false'
+        if: steps.read.outputs.remain > 0
+        env:
+          GIT_AUTHOR_NAME: ${{ env.GIT_NAME }}
+          GIT_AUTHOR_EMAIL: ${{ env.GIT_EMAIL }}
+          TARGET: ${{ steps.read.outputs.target }}
+          DONE: ${{ steps.read.outputs.done }}
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
         run: |
-          git config user.name "${{ env.GIT_NAME }}"
-          git config user.email "${{ env.GIT_EMAIL }}"
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "$GIT_AUTHOR_EMAIL"
 
           VISITS=$(curl -s "${{ env.FIREBASE_URL }}" | tr -d '"')
           DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
@@ -96,13 +85,12 @@ jobs:
           echo "$DATE - $VISITS" >> archive.txt
           git add archive.txt
 
-          git commit -m "Auto commit ($((steps.read.outputs.done + 1))/${{ steps.read.outputs.target }}): visits=$VISITS at $DATE"
+          NEXT=$((DONE + 1))
+          git commit -m "Auto ($NEXT/$TARGET): visits=$VISITS at $DATE" || true
 
-          NEW_DONE=$((steps.read.outputs.done + 1))
-          echo $NEW_DONE > cache/commit_done.txt
+          echo "$NEXT" > cache/commit_done.txt
           git add cache/commit_done.txt
 
-          git commit -m "Progress update ($NEW_DONE/${{ steps.read.outputs.target }})" || true
+          git commit -m "Progress $NEXT/$TARGET" || true
 
-          git push
-y
+          git push https://x-access-token:${PERSONAL_TOKEN}@github.com/${{ github.repository }}.git ${{ env.TARGET_BRANCH }}
