@@ -2,7 +2,7 @@ name: daily commits
 
 on:
   schedule:
-    - cron: "0 * * * *"    # تشغيل كل ساعة
+    - cron: "0 * * * *"    # كل ساعة
   workflow_dispatch:
 
 permissions:
@@ -25,15 +25,13 @@ jobs:
           ref: ${{ env.TARGET_BRANCH }}
 
       - name: Prepare cache folder
-        run: |
-          mkdir -p cache
+        run: mkdir -p cache
 
-      - name: Initialize daily values if needed
+      - name: Initialize daily values (ONLY ONCE)
         id: init
         run: |
           TODAY=$(date -u +%Y-%m-%d)
 
-          # إذا الملف غير موجود—يوم جديد
           if [ ! -f cache/day.txt ] || [ "$(cat cache/day.txt)" != "$TODAY" ]; then
             DOW=$(date -u +%u)
 
@@ -50,6 +48,13 @@ jobs:
             echo "$TODAY" > cache/day.txt
             echo "$COUNT" > cache/commit_count.txt
             echo "0" > cache/commit_done.txt
+
+            git config user.name "${{ env.GIT_NAME }}"
+            git config user.email "${{ env.GIT_EMAIL }}"
+
+            git add cache/*
+            git commit -m "New day initialized: target=$COUNT"
+            git push https://x-access-token:${{ secrets.PERSONAL_TOKEN }}@github.com/${{ github.repository }}.git ${{ env.TARGET_BRANCH }}
           fi
 
       - name: Read progress
@@ -63,9 +68,9 @@ jobs:
           echo "done=$DONE" >> $GITHUB_OUTPUT
           echo "remain=$REMAIN" >> $GITHUB_OUTPUT
 
-      - name: Skip if finished
+      - name: Stop if finished
         if: steps.read.outputs.remain <= 0
-        run: echo "All commits done for today."
+        run: echo "All commits done."
 
       - name: Make one commit
         if: steps.read.outputs.remain > 0
@@ -90,7 +95,6 @@ jobs:
 
           echo "$NEXT" > cache/commit_done.txt
           git add cache/commit_done.txt
-
           git commit -m "Progress $NEXT/$TARGET" || true
 
           git push https://x-access-token:${PERSONAL_TOKEN}@github.com/${{ github.repository }}.git ${{ env.TARGET_BRANCH }}
