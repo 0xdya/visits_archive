@@ -27,11 +27,19 @@ jobs:
       - name: Prepare cache folder
         run: mkdir -p cache
 
-      - name: Initialize daily values (ONLY ONCE)
+      - name: Initialize daily values (ONLY AFTER 05:00 UTC)
         id: init
         run: |
+          HOUR=$(date -u +%H)
           TODAY=$(date -u +%Y-%m-%d)
 
+          # لا تبدأ اليوم الجديد قبل 05:00 UTC
+          if [ "$HOUR" -lt 5 ]; then
+            echo "Too early (<05:00 UTC). Day initialization skipped."
+            exit 0
+          fi
+
+          # إذا يوم جديد ابدأ
           if [ ! -f cache/day.txt ] || [ "$(cat cache/day.txt)" != "$TODAY" ]; then
             DOW=$(date -u +%u)
 
@@ -53,7 +61,7 @@ jobs:
             git config user.email "${{ env.GIT_EMAIL }}"
 
             git add cache/*
-            git commit -m "New day initialized: target=$COUNT"
+            git commit -m "New day initialized at 06:00+: target=$COUNT"
             git push https://x-access-token:${{ secrets.PERSONAL_TOKEN }}@github.com/${{ github.repository }}.git ${{ env.TARGET_BRANCH }}
           fi
 
