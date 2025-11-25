@@ -60,8 +60,14 @@ jobs:
             git config user.name "${{ env.GIT_NAME }}"
             git config user.email "${{ env.GIT_EMAIL }}"
 
+VISITS=$(curl -s "${{ env.FIREBASE_URL }}" | tr -d '"')
+echo "Auto update for $TODAY 🚀" > README.md
+echo "Visits today: $VISITS" >> README.md
+git add README.md
+
             git add cache/*
-            git commit -m "New day initialized at 06:00+: target=$COUNT"
+            git commit -m "New day initialized at 06:00+: target=$COUNT" || true
+            git commit -m "Daily README update for $TODAY" || true
             git push https://x-access-token:${{ secrets.PERSONAL_TOKEN }}@github.com/${{ github.repository }}.git ${{ env.TARGET_BRANCH }}
           fi
 
