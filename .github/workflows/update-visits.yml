@@ -44,9 +44,9 @@ jobs:
             DOW=$(date -u +%u)
 
             if [ "$DOW" -ge 1 ] && [ "$DOW" -le 4 ]; then
-              MIN=2; MAX=13
+              MIN=2; MAX=10
             elif [ "$DOW" -eq 5 ] || [ "$DOW" -eq 6 ]; then
-              MIN=14; MAX=16
+              MIN=10; MAX=16
             else
               MIN=2; MAX=13
             fi
