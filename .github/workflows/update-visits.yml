@@ -81,3 +81,21 @@ jobs:
         if: steps.read.outputs.remain > 0
         env:
           PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+ run: |
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "$GIT_AUTHOR_EMAIL"
+
+          VISITS=$(curl -s "${{ env.FIREBASE_URL }}" | tr -d '"')
+          DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+
+          echo "$DATE - $VISITS" >> archive.txt
+          git add archive.txt
+
+          NEXT=$((DONE + 1))
+          git commit -m "Auto ($NEXT/$TARGET): visits=$VISITS at $DATE" || true
+
+          echo "$NEXT" > cache/commit_done.txt
+          git add cache/commit_done.txt
+          git commit -m "Progress $NEXT/$TARGET" || true
+
+          git push https://x-access-token:${PERSONAL_TOKEN}@github.com/${{ github.repository }}.git ${{ env.TARGET_BRANCH }}
