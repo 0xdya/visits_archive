@@ -43,12 +43,12 @@ jobs:
           if [ ! -f cache/day.txt ] || [ "$(cat cache/day.txt)" != "$TODAY" ]; then
             DOW=$(date -u +%u)
 
-            if [ "$DOW" -ge 1 ] && [ "$DOW" -le 4 ]; then
+            if [ "$DOW" -ge 1 ] && [ "$DOW" -le 3 ]; then
               MIN=2; MAX=10
             elif [ "$DOW" -eq 5 ] || [ "$DOW" -eq 6 ]; then
               MIN=10; MAX=16
             else
-              MIN=2; MAX=13
+              MIN=8; MAX=15
             fi
 
             COUNT=$(( (RANDOM % (MAX - MIN + 1)) + MIN ))
