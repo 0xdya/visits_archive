@@ -12,7 +12,6 @@ env:
   TARGET_BRANCH: main
   GIT_NAME: "0xdya"
   GIT_EMAIL: "0xdya@proton.me"
-  FIREBASE_URL: "https://oxdyaa-default-rtdb.firebaseio.com/visits.json"
 
 jobs:
   run:
@@ -23,19 +22,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
 
       - name: Prepare cache folder
         run: mkdir -p cache
 
-      - name: Initialize daily values (ONLY AFTER 05:00 UTC)
+      - name: Initialize daily values
         run: |
-          HOUR=$(date -u +%H)
           TODAY=$(date -u +%Y-%m-%d)
-
-          # لا تبدأ اليوم الجديد قبل 05:00 UTC
-          if [ "$HOUR" -lt 5 ]; then
-            exit 0
-          fi
 
           if [ ! -f cache/day.txt ] || [ "$(cat cache/day.txt)" != "$TODAY" ]; then
             DOW=$(date -u +%u)
@@ -54,8 +48,8 @@ jobs:
             echo "$COUNT" > cache/commit_count.txt
             echo "0" > cache/commit_done.txt
 
-            git config user.name "${{ env.GIT_NAME }}"
-            git config user.email "${{ env.GIT_EMAIL }}"
+            git config user.name "${GIT_NAME}"
+            git config user.email "${GIT_EMAIL}"
 
             git add cache/*
             git commit -m "Init day: target=$COUNT"
@@ -69,8 +63,6 @@ jobs:
           DONE=$(cat cache/commit_done.txt)
           REMAIN=$((TARGET - DONE))
 
-          echo "target=$TARGET" >> $GITHUB_OUTPUT
-          echo "done=$DONE" >> $GITHUB_OUTPUT
           echo "remain=$REMAIN" >> $GITHUB_OUTPUT
 
       - name: Stop if finished
@@ -79,23 +71,16 @@ jobs:
 
       - name: Make one commit
         if: steps.read.outputs.remain > 0
-        env:
-          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
- run: |
-          git config user.name "$GIT_AUTHOR_NAME"
-          git config user.email "$GIT_AUTHOR_EMAIL"
+        run: |
+          echo "$(date -u)" >> cache/auto.txt
 
-          VISITS=$(curl -s "${{ env.FIREBASE_URL }}" | tr -d '"')
-          DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')
+          DONE=$(cat cache/commit_done.txt)
+          DONE=$((DONE + 1))
+          echo "$DONE" > cache/commit_done.txt
 
-          echo "$DATE - $VISITS" >> archive.txt
-          git add archive.txt
+          git config user.name "${GIT_NAME}"
+          git config user.email "${GIT_EMAIL}"
 
-          NEXT=$((DONE + 1))
-          git commit -m "Auto ($NEXT/$TARGET): visits=$VISITS at $DATE" || true
-
-          echo "$NEXT" > cache/commit_done.txt
-          git add cache/commit_done.txt
-          git commit -m "Progress $NEXT/$TARGET" || true
-
-          git push https://x-access-token:${PERSONAL_TOKEN}@github.com/${{ github.repository }}.git ${{ env.TARGET_BRANCH }}
+          git add cache/*
+          git commit -m "Auto commit $DONE"
+          git push https://x-access-token:${{ secrets.PERSONAL_TOKEN }}@github.com/${{ github.repository }}.git ${{ env.TARGET_BRANCH }}
