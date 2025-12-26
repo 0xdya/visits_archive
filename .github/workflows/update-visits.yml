@@ -46,9 +46,9 @@ jobs:
             if [ "$DOW" -ge 1 ] && [ "$DOW" -le 3 ]; then
               MIN=2; MAX=10
             elif [ "$DOW" -eq 5 ] || [ "$DOW" -eq 6 ]; then
-              MIN=10; MAX=16
+              MIN=1; MAX=10
             else
-              MIN=8; MAX=15
+              MIN=1; MAX=10
             fi
 
             COUNT=$(( (RANDOM % (MAX - MIN + 1)) + MIN ))
